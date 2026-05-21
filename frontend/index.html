@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幕牆圖紙結構分析系統</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>幕牆圖紙結構分析系統</h1>
+        <span class="subtitle">Curtain Wall Drawing Structure Analyzer</span>
+        <nav class="tabs">
+            <button class="tab active" data-tab="analyzer">圖紙分析</button>
+            <button class="tab" data-tab="database">DWG 資料庫</button>
+        </nav>
+    </header>
+
+    <main class="app-main">
+
+        <!-- ================================================================ -->
+        <!-- Tab 1: 圖紙分析 (原有功能) -->
+        <!-- ================================================================ -->
+        <section class="tab-content active" id="tab-analyzer">
+            <section class="upload-section">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">📐</div>
+                    <p>拖放圖紙至此，或點擊上傳</p>
+                    <p class="upload-hint">支援 PDF / PNG / JPG / TIFF</p>
+                    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp" hidden>
+                </div>
+                <div class="upload-options">
+                    <label class="toggle">
+                        <input type="checkbox" id="useAI">
+                        <span>使用 AI 講解 (需 API Key)</span>
+                    </label>
+                    <button id="analyzeBtn" class="btn btn-primary" disabled>開始分析</button>
+                </div>
+                <div id="uploadStatus" class="status hidden"></div>
+            </section>
+
+            <section id="resultsSection" class="results-section hidden">
+                <div class="card" id="drawingTypeCard">
+                    <h2>圖紙類型判定</h2>
+                    <div id="drawingTypeContent"></div>
+                </div>
+                <div class="card" id="summaryCard">
+                    <h2>結構摘要</h2>
+                    <pre id="summaryText"></pre>
+                </div>
+                <div class="card" id="gridCard">
+                    <h2>軸網系統</h2>
+                    <div id="gridContent"></div>
+                </div>
+                <div class="card" id="panelCard">
+                    <h2>面板佈局</h2>
+                    <div id="panelContent"></div>
+                </div>
+                <div class="card" id="annotationCard">
+                    <h2>標註與加工標記</h2>
+                    <div id="annotationContent"></div>
+                </div>
+                <div class="card hidden" id="sectionMarkCard">
+                    <h2>加工圖號 / Section Mark</h2>
+                    <div id="sectionMarkContent"></div>
+                </div>
+                <div class="card ai-card hidden" id="aiCard">
+                    <h2>AI 結構講解</h2>
+                    <div id="aiContent"></div>
+                </div>
+            </section>
+
+            <section class="reference-section">
+                <h2>系統可識別的圖紙類型</h2>
+                <div id="drawingTypesRef" class="types-grid">
+                    <div class="type-card"><h3>位置圖</h3><p class="type-en">Setting-out / Layout Drawing</p><p>幕牆單元在立面上的位置、軸網、面板編號及整體尺寸</p><span class="scale">典型比例 1:100 ~ 1:200</span></div>
+                    <div class="type-card"><h3>加工圖</h3><p class="type-en">Fabrication / Shop Drawing</p><p>個別面板的詳細加工尺寸、材料、焊接/切割/鑽孔標記及公差</p><span class="scale">典型比例 1:1 ~ 1:20</span></div>
+                    <div class="type-card"><h3>大樣圖</h3><p class="type-en">Detail Drawing</p><p>局部節點放大細節：連接方式、密封防水、伸縮縫</p><span class="scale">典型比例 1:1 ~ 1:10</span></div>
+                    <div class="type-card"><h3>組裝圖</h3><p class="type-en">Assembly Drawing</p><p>多構件的組裝關係與安裝順序，含零件編號</p><span class="scale">典型比例 1:5 ~ 1:50</span></div>
+                </div>
+            </section>
+        </section>
+
+        <!-- ================================================================ -->
+        <!-- Tab 2: DWG 資料庫 -->
+        <!-- ================================================================ -->
+        <section class="tab-content" id="tab-database">
+            <!-- 資料庫選擇 + 初始化 -->
+            <div class="card" id="dbControlCard">
+                <h2>資料庫管理</h2>
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;">
+                        <label style="font-size:0.8rem;color:var(--text-secondary);">當前資料庫</label>
+                        <select id="dbSelector" class="search-input" style="margin-top:4px;">
+                            <option value="">載入中...</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;min-width:280px;">
+                        <label style="font-size:0.8rem;color:var(--text-secondary);">初始化新資料夾</label>
+                        <div class="search-row" style="margin-top:4px;">
+                            <input type="text" id="initFolderInput" class="search-input" placeholder="先按「選擇資料夾」選取路徑..." readonly>
+                            <button id="pickFolderBtn" class="btn btn-secondary btn-sm">📁 選擇資料夾</button>
+                            <button id="initFolderBtn" class="btn btn-primary btn-sm" disabled>初始化</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="initStatus" class="hidden" style="margin-top:8px;"></div>
+            </div>
+
+            <!-- 反向查詢: 加工圖 → 位置圖 -->
+            <div class="card" id="reverseLookupCard">
+                <h2>輸入加工圖號，找出對應的位置圖</h2>
+                <div class="search-row">
+                    <input type="text" id="reverseLookupInput" class="search-input" placeholder="輸入加工圖號，如 ACB-ACD-0064...">
+                    <button id="reverseLookupBtn" class="btn btn-primary">查詢</button>
+                </div>
+                <div id="reverseLookupResult" class="hidden" style="margin-top:14px;"></div>
+            </div>
+
+            <!-- 加工圖 → 位置圖 完整對照表 -->
+            <div class="card hidden" id="fabToLayoutCard">
+                <h2>加工圖 → 位置圖 對照表</h2>
+                <div id="fabToLayoutSummary" class="db-summary"></div>
+                <div class="table-wrap">
+                    <table class="data-table" id="fabToLayoutTable">
+                        <thead>
+                            <tr>
+                                <th>加工圖號</th>
+                                <th>檔名</th>
+                                <th>尺寸 (mm)</th>
+                                <th>數量</th>
+                                <th>顏色</th>
+                                <th>對應位置圖</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 資料庫狀態 -->
+            <div class="card hidden" id="dbStatusCard">
+                <h2>資料庫狀態</h2>
+                <div id="dbStatusContent"></div>
+            </div>
+
+            <!-- 位置圖 → 加工圖對照 -->
+            <div class="card hidden" id="layoutCard">
+                <h2>位置圖 → 加工圖對照</h2>
+                <div id="layoutSummary" class="db-summary"></div>
+                <div class="table-wrap">
+                    <table class="data-table" id="layoutTable">
+                        <thead>
+                            <tr>
+                                <th>圖號</th>
+                                <th>寬 W (mm)</th>
+                                <th>高 H (mm)</th>
+                                <th>數量</th>
+                                <th>顏色</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="external-refs hidden" id="externalRefs">
+                    <h4>外部引用 (不在本資料夾)</h4>
+                    <div id="externalRefsList"></div>
+                </div>
+            </div>
+
+            <!-- 缺檔檢查 -->
+            <div class="card hidden" id="missingCard">
+                <h2>缺檔檢查</h2>
+                <div id="missingContent"></div>
+            </div>
+
+            <!-- 搜尋 -->
+            <div class="card" id="searchCard">
+                <h2>搜尋圖紙</h2>
+                <div class="search-row">
+                    <input type="text" id="dbSearch" class="search-input" placeholder="輸入圖號或檔名...">
+                    <button id="dbSearchBtn" class="btn btn-primary">搜尋</button>
+                    <button id="dbListAllBtn" class="btn btn-secondary">列出全部</button>
+                </div>
+                <div class="table-wrap hidden" id="searchResultsWrap">
+                    <table class="data-table" id="searchResultsTable">
+                        <thead>
+                            <tr><th>圖號</th><th>檔名</th><th>類型</th><th>尺寸</th><th>數量</th><th>操作</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 圖紙細節 (浮動面板) -->
+            <div class="card hidden" id="detailCard">
+                <div class="detail-header">
+                    <h2 id="detailTitle">圖紙細節</h2>
+                    <button class="btn btn-sm" id="detailClose">✕ 關閉</button>
+                </div>
+                <div id="detailContent"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <p>規則引擎自動分析 | DWG 文字直接提取 | AI 講解為可選功能</p>
+    </footer>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
